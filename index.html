@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte interactive des mohafazas Liban</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.17/d3.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #154377;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        
+        .header {
+            padding: 10px 0 0 0;
+            margin: 0;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        .title {
+            color: white;
+            text-align: center;
+            font-size: 28px;
+            margin: 5px 0;
+            padding: 0;
+        }
+        
+        .map-container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            margin-top: 10px;
+        }
+        
+        .info-panel {
+            background-color: #f5f5f5;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        
+        .info-title {
+            color: #154377;
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .instructions ul {
+            padding-left: 20px;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 5px 10px;
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>  
+  <div class="container">
+    <h1 class="title">Carte des mohafazas du Liban</h1>
+    
+    <div class="map-container">
+        <div id="map-area"></div>
+        
+        <div class="info-panel" id="info-panel">
+            <div id="info-content">
+                <p>Survolez ou cliquez sur un gouvernorat pour voir son nom.</p>
+            </div>
+        </div>
+    </div>
+  </div>
+  
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    // Configuration
+    const width = 800;
+    const height = 600;
+    let selectedMohafaza = null;
+    
+    // Créer l'élément SVG
+    const svg = d3.select("#map-area")
+        .append("svg")
+        .attr("width", "100%")
+        .attr("height", height)
+        .attr("viewBox", [0, 0, width, height])
+        .style("font", "12px sans-serif");
+    
+    const g = svg.append("g");
+    
+    // Créer un tooltip
+    const tooltip = d3.select("#tooltip");
+    
+    // Définir une projection pour le Liban
+    const projection = d3.geo.mercator()
+        .center([35.8623, 33.8547])  // Centrer la carte sur le Liban
+        .scale(12000)
+        .translate([width / 2, height / 2]);
+    
+    // Créer un générateur de chemin
+    const path = d3.geo.path().projection(projection);
+    
+    // Effet de zoom
+    const zoom = d3.behavior.zoom()
+        .scaleExtent([1, 5])
+        .on("zoom", function(event) {
+            g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+        });
+    
+    svg.call(zoom);
+    
+    // Charger et traiter les données GeoJSON
+    async function loadMap() {
+        try {
+            // Charger les données
+            d3.json("Lebanon_Level1.json", function(error, geojson) {
+                if (error) {
+                    console.error("Erreur lors du chargement des données GeoJSON:", error);
+                    document.getElementById("map-area").innerHTML = 
+                        "<p style='color: red; text-align: center;'>Erreur lors du chargement de la carte</p>";
+                    return;
+                }
+                
+                // Dessiner les mohafazas
+                g.selectAll("path")
+                    .data(topojson.feature(geojson, geojson.objects.gadm36_LBN_1).features)
+                    .enter()
+                    .append("path")
+                    .attr("d", path)
+                    .attr("fill", "#f2f2f2")
+                    .attr("stroke", "#154377")
+                    .attr("stroke-width", 0.5)
+                    .attr("class", "mohafaza")
+                    .attr("id", d => d.properties.NAME_1.replace(/\s+/g, '-'))
+                    .on("mouseover", function(d) {
+                        // Mettre en surbrillance le mohafaza
+                        d3.select(this)
+                            .attr("fill", "#ec1c29")
+                            .attr("stroke-width", 1.5);
+                        
+                        // Afficher le tooltip
+                        tooltip
+                            .style("left", (d3.event.pageX + 10) + "px")
+                            .style("top", (d3.event.pageY - 30) + "px")
+                            .text(d.properties.NAME_1)
+                            .style("opacity", 1);
+                    })
+                    .on("mouseout", function(d) {
+                        // Rétablir le style normal (sauf si le mohafaza est sélectionné)
+                        const mohafazaName = d.properties.NAME_1;
+                        d3.select(this)
+                            .attr("fill", mohafazaName === selectedMohafaza ? "#6290c8" : "#f2f2f2")
+                            .attr("stroke-width", mohafazaName === selectedMohafaza ? 1.5 : 0.5);
+                        
+                        // Masquer le tooltip
+                        tooltip.style("opacity", 0);
+                    })
+                    .on("click", function(d) {
+                        // Réinitialiser tous les mohafazas
+                        g.selectAll(".mohafaza")
+                            .attr("fill", "#f2f2f2")
+                            .attr("stroke-width", 0.5);
+                        
+                        // Mettre en surbrillance le mohafaza sélectionné
+                        d3.select(this)
+                            .attr("fill", "#6290c8")
+                            .attr("stroke-width", 1.5);
+                        
+                        // Mettre à jour le mohafaza sélectionné
+                        selectedMohafaza = d.properties.NAME_1;
+                        
+                        // Mettre à jour le panneau d'informations
+                        updateInfoPanel(selectedMohafaza);
+                    });
+            });
+        } catch (error) {
+            console.error("Erreur lors du chargement des données GeoJSON:", error);
+            document.getElementById("map-area").innerHTML = 
+                "<p style='color: red; text-align: center;'>Erreur lors du chargement de la carte</p>";
+        }
+    }
+    
+    // Mettre à jour le panneau d'informations avec les détails du mohafaza
+    function updateInfoPanel(mohafazaName) {
+        if (mohafazaName) {
+            document.getElementById("info-content").innerHTML = `
+                <h2 class="info-title">Gouvernorat: ${mohafazaName}</h2>
+                <p>Cliquez sur un autre gouvernorat pour voir ses informations.</p>
+            `;
+        } else {
+            document.getElementById("info-content").innerHTML = `
+                <p>Survolez ou cliquez sur un gouvernorat pour voir son nom.</p>
+            `;
+        }
+    }
+
+    // Charge le script topojson et initialise la carte
+    function loadScript(url) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = url;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+    }
+
+    // Charge le script topojson et initialise la carte
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js')
+        .then(() => {
+            // Initialiser la carte une fois que topojson est chargé
+            loadMap();
+        })
+        .catch(error => {
+            console.error("Erreur de chargement de topojson:", error);
+            document.getElementById("map-area").innerHTML = 
+                "<p style='color: red; text-align: center;'>Erreur lors du chargement des dépendances</p>";
+        });
+  </script>
+</body>
+</html>
