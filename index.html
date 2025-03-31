@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte interactive des mohafazas Liban</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.17/d3.min.js"></script>
+    <title>Carte interactive des gouvernorats du Liban</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -85,14 +85,14 @@
 </head>
 <body>  
   <div class="container">
-    <h1 class="title">Carte des mohafazas du Liban</h1>
+    <h1 class="title">Carte des gouvernorats du Liban</h1>
     
     <div class="map-container">
         <div id="map-area"></div>
         
         <div class="info-panel" id="info-panel">
             <div id="info-content">
-                <p>Survolez ou cliquez sur un gouvernorat pour voir son nom.</p>
+                <p>Survolez ou cliquez sur un gouvernorat pour voir ses informations.</p>
             </div>
         </div>
     </div>
@@ -104,7 +104,7 @@
     // Configuration
     const width = 800;
     const height = 600;
-    let selectedMohafaza = null;
+    let selectedRegion = null;
     
     // Créer l'élément SVG
     const svg = d3.select("#map-area")
@@ -120,109 +120,112 @@
     const tooltip = d3.select("#tooltip");
     
     // Définir une projection pour le Liban
-    const projection = d3.geo.mercator()
-        .center([35.8623, 33.8547])  // Centrer la carte sur le Liban
-        .scale(12000)
+    const projection = d3.geoMercator()
+        .center([36.0, 33.9])  // Centrer la carte sur le Liban
+        .scale(14000)
         .translate([width / 2, height / 2]);
     
     // Créer un générateur de chemin
-    const path = d3.geo.path().projection(projection);
+    const path = d3.geoPath().projection(projection);
     
-    // Effet de zoom
-    const zoom = d3.behavior.zoom()
-        .scaleExtent([1, 5])
-        .on("zoom", function(event) {
-            g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
-        });
-    
-    svg.call(zoom);
-    
-    // Charger et traiter les données GeoJSON
+    // Charger et traiter les données TopoJSON
     async function loadMap() {
         try {
             // Charger les données
-            d3.json("Lebanon_Level1.json", function(error, geojson) {
-                if (error) {
-                    console.error("Erreur lors du chargement des données GeoJSON:", error);
-                    document.getElementById("map-area").innerHTML = 
-                        "<p style='color: red; text-align: center;'>Erreur lors du chargement de la carte</p>";
-                    return;
-                }
-                
-                // Dessiner les mohafazas
-                g.selectAll("path")
-                    .data(topojson.feature(geojson, geojson.objects.gadm36_LBN_1).features)
-                    .enter()
-                    .append("path")
-                    .attr("d", path)
-                    .attr("fill", "#f2f2f2")
-                    .attr("stroke", "#154377")
-                    .attr("stroke-width", 0.5)
-                    .attr("class", "mohafaza")
-                    .attr("id", d => d.properties.NAME_1.replace(/\s+/g, '-'))
-                    .on("mouseover", function(d) {
-                        // Mettre en surbrillance le mohafaza
-                        d3.select(this)
-                            .attr("fill", "#ec1c29")
-                            .attr("stroke-width", 1.5);
-                        
-                        // Afficher le tooltip
-                        tooltip
-                            .style("left", (d3.event.pageX + 10) + "px")
-                            .style("top", (d3.event.pageY - 30) + "px")
-                            .text(d.properties.NAME_1)
-                            .style("opacity", 1);
-                    })
-                    .on("mouseout", function(d) {
-                        // Rétablir le style normal (sauf si le mohafaza est sélectionné)
-                        const mohafazaName = d.properties.NAME_1;
-                        d3.select(this)
-                            .attr("fill", mohafazaName === selectedMohafaza ? "#6290c8" : "#f2f2f2")
-                            .attr("stroke-width", mohafazaName === selectedMohafaza ? 1.5 : 0.5);
-                        
-                        // Masquer le tooltip
-                        tooltip.style("opacity", 0);
-                    })
-                    .on("click", function(d) {
-                        // Réinitialiser tous les mohafazas
-                        g.selectAll(".mohafaza")
-                            .attr("fill", "#f2f2f2")
-                            .attr("stroke-width", 0.5);
-                        
-                        // Mettre en surbrillance le mohafaza sélectionné
-                        d3.select(this)
-                            .attr("fill", "#6290c8")
-                            .attr("stroke-width", 1.5);
-                        
-                        // Mettre à jour le mohafaza sélectionné
-                        selectedMohafaza = d.properties.NAME_1;
-                        
-                        // Mettre à jour le panneau d'informations
-                        updateInfoPanel(selectedMohafaza);
-                    });
-            });
+            const response = await fetch('geoBoundaries-LBN-ADM1_simplified.json');
+            const topojsonData = await response.json();
+            
+            // Convertir TopoJSON en GeoJSON
+            const geojsonFeatures = topojson.feature(
+                topojsonData, 
+                topojsonData.objects["geoBoundaries-LBN-ADM1_simplified"]
+            );
+            
+            // Dessiner les régions
+            g.selectAll("path")
+                .data(geojsonFeatures.features)
+                .enter()
+                .append("path")
+                .attr("d", path)
+                .attr("fill", "#f2f2f2")
+                .attr("stroke", "#154377")
+                .attr("stroke-width", 0.5)
+                .attr("class", "region")
+                .attr("id", d => d.properties.shapeName.replace(/\s+/g, '-'))
+                .on("mouseover", function(event, d) {
+                    // Mettre en surbrillance la région
+                    d3.select(this)
+                        .attr("fill", "#ec1c29")
+                        .attr("stroke-width", 1.5);
+                    
+                    // Afficher le tooltip
+                    tooltip
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 30) + "px")
+                        .text(d.properties.shapeName)
+                        .style("opacity", 1);
+                })
+                .on("mouseout", function(d) {
+                    // Rétablir le style normal (sauf si la région est sélectionnée)
+                    const regionName = d3.select(this).datum().properties.shapeName;
+                    d3.select(this)
+                        .attr("fill", regionName === selectedRegion ? "#6290c8" : "#f2f2f2")
+                        .attr("stroke-width", regionName === selectedRegion ? 1.5 : 0.5);
+                    
+                    // Masquer le tooltip
+                    tooltip.style("opacity", 0);
+                })
+                .on("click", function(event, d) {
+                    // Réinitialiser toutes les régions
+                    g.selectAll(".region")
+                        .attr("fill", "#f2f2f2")
+                        .attr("stroke-width", 0.5);
+                    
+                    // Mettre en surbrillance la région sélectionnée
+                    d3.select(this)
+                        .attr("fill", "#6290c8")
+                        .attr("stroke-width", 1.5);
+                    
+                    // Mettre à jour la région sélectionnée
+                    selectedRegion = d.properties.shapeName;
+                    
+                    // Mettre à jour le panneau d'informations
+                    updateInfoPanel(d.properties);
+                });
+            
+            // Ajouter un effet de zoom
+            const zoom = d3.zoom()
+                .scaleExtent([1, 5])
+                .on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                });
+            
+            svg.call(zoom);
+            
         } catch (error) {
-            console.error("Erreur lors du chargement des données GeoJSON:", error);
+            console.error("Erreur lors du chargement des données TopoJSON:", error);
             document.getElementById("map-area").innerHTML = 
                 "<p style='color: red; text-align: center;'>Erreur lors du chargement de la carte</p>";
         }
     }
     
-    // Mettre à jour le panneau d'informations avec les détails du mohafaza
-    function updateInfoPanel(mohafazaName) {
-        if (mohafazaName) {
+    // Mettre à jour le panneau d'informations avec les détails de la région
+    function updateInfoPanel(properties) {
+        if (properties) {
             document.getElementById("info-content").innerHTML = `
-                <h2 class="info-title">Gouvernorat: ${mohafazaName}</h2>
+                <h2 class="info-title">Gouvernorat: ${properties.shapeName}</h2>
+                <p><strong>Code ISO:</strong> ${properties.shapeISO || "N/A"}</p>
+                <p><strong>ID:</strong> ${properties.shapeID}</p>
                 <p>Cliquez sur un autre gouvernorat pour voir ses informations.</p>
             `;
         } else {
             document.getElementById("info-content").innerHTML = `
-                <p>Survolez ou cliquez sur un gouvernorat pour voir son nom.</p>
+                <p>Survolez ou cliquez sur un gouvernorat pour voir ses informations.</p>
             `;
         }
     }
 
-    // Charge le script topojson et initialise la carte
+    // Charger la bibliothèque topojson
     function loadScript(url) {
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
